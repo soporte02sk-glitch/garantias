@@ -3,128 +3,166 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard de Soporte Técnico</title>
+    <title>Dashboard Técnico - Garantías</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root { --primary: #2c3e50; --accent: #3498db; --bg: #f4f7f6; }
         body { font-family: 'Segoe UI', sans-serif; background: var(--bg); margin: 0; padding: 20px; }
-        .container { max-width: 1200px; margin: auto; background: white; padding: 25px; border-radius: 12px; shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        .container { max-width: 1200px; margin: auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
         
-        /* Tabs */
         .tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #ddd; }
-        .tab-btn { padding: 12px 25px; cursor: pointer; border: none; background: none; font-weight: bold; color: #7f8c8d; }
+        .tab-btn { padding: 12px 25px; cursor: pointer; border: none; background: none; font-weight: bold; color: #7f8c8d; border-bottom: 3px solid transparent; }
         .tab-btn.active { color: var(--accent); border-bottom: 3px solid var(--accent); }
-        .tab-content { display: none; }
+        .tab-content { display: none; padding: 20px 0; }
         .tab-content.active { display: block; }
 
-        /* Stats Cards */
-        .grid-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px; margin-top: 20px; }
-        .chart-container { background: #fff; padding: 15px; border: 1px solid #eee; border-radius: 8px; height: 300px; }
+        .grid-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; }
+        .chart-box { background: #fff; padding: 15px; border: 1px solid #eee; border-radius: 8px; min-height: 350px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
         
-        .upload-section { border: 2px dashed var(--accent); padding: 20px; text-align: center; border-radius: 10px; background: #ebf5fb; margin-bottom: 20px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
-        th { background: var(--primary); color: white; padding: 10px; text-align: left; position: sticky; top: 0; }
-        td { padding: 8px; border-bottom: 1px solid #eee; }
-        #search-input { width: 100%; padding: 10px; margin-bottom: 10px; border-radius: 5px; border: 1px solid #ccc; }
+        .upload-section { border: 2px dashed var(--accent); padding: 30px; text-align: center; border-radius: 10px; background: #ebf5fb; margin-bottom: 20px; }
+        .table-container { overflow-x: auto; max-height: 600px; border: 1px solid #eee; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th { background: var(--primary); color: white; padding: 12px; text-align: left; position: sticky; top: 0; }
+        td { padding: 10px; border-bottom: 1px solid #eee; }
+        tr:hover { background: #f9f9f9; }
+        #search-input { width: 100%; padding: 12px; margin-bottom: 15px; border-radius: 5px; border: 1px solid #ccc; font-size: 16px; }
+        .msg { padding: 20px; text-align: center; color: #7f8c8d; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>Panel Técnico de Garantías y Soporte</h2>
+    <h2 id="titulo">Panel de Control de Tickets</h2>
 
-    <div class="upload-section">
+    <div class="upload-section" id="upload-area">
         <input type="file" id="excel-file" accept=".xlsx, .xls">
-        <p style="font-size: 12px; color: #666;">Sube el archivo de Odoo para procesar estadísticas</p>
+        <p>Sube el reporte de Odoo para activar las funciones</p>
     </div>
 
-    <div class="tabs">
-        <button class="tab-btn active" onclick="openTab('data-tab')">Listado de Tickets</button>
-        <button class="tab-btn" onclick="openTab('stats-tab')">Análisis Estadístico</button>
+    <div class="tabs" id="main-tabs" style="display:none;">
+        <button class="tab-btn active" onclick="openTab(event, 'data-tab')">📋 Listado de Datos</button>
+        <button class="tab-btn" onclick="openTab(event, 'stats-tab')">📊 Estadísticas Reales</button>
     </div>
 
     <div id="data-tab" class="tab-content active">
-        <input type="text" id="search-input" placeholder="Filtrar por técnico, serie, modelo o ticket...">
-        <div style="overflow-x: auto; max-height: 500px;">
-            <div id="table-output"></div>
+        <input type="text" id="search-input" placeholder="Buscar técnico, serie, falla o ticket...">
+        <div class="table-container" id="table-output">
+            <p class="msg">Esperando archivo...</p>
         </div>
     </div>
 
     <div id="stats-tab" class="tab-content">
         <div class="grid-charts">
-            <div class="chart-container"><canvas id="chart-tecnicos"></canvas></div>
-            <div class="chart-container"><canvas id="chart-estados"></canvas></div>
-            <div class="chart-container"><canvas id="chart-fallas"></canvas></div>
+            <div class="chart-box"><h3>Tickets por Persona</h3><canvas id="chart-tecnicos"></canvas></div>
+            <div class="chart-box"><h3>Distribución por Etapa</h3><canvas id="chart-estados"></canvas></div>
         </div>
     </div>
 </div>
 
 <script>
     let rawData = [];
-    let charts = {};
+    let activeCharts = [];
 
-    function openTab(id) {
-        document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-        document.getElementById(id).classList.add('active');
-        event.currentTarget.classList.add('active');
+    // Función para cambiar pestañas corregida
+    function openTab(evt, tabName) {
+        const contents = document.getElementsByClassName("tab-content");
+        for (let i = 0; i < contents.length; i++) contents[i].classList.remove("active");
+
+        const buttons = document.getElementsByClassName("tab-btn");
+        for (let i = 0; i < buttons.length; i++) buttons[i].classList.remove("active");
+
+        document.getElementById(tabName).classList.add("active");
+        evt.currentTarget.classList.add("active");
     }
 
     document.getElementById('excel-file').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
         const reader = new FileReader();
         reader.onload = function(e) {
-            const data = new Uint8Array(e.target.result);
-            const workbook = XLSX.read(data, { type: 'array' });
-            rawData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
-            renderTable(rawData);
-            renderCharts(rawData);
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const firstSheet = workbook.SheetNames[0];
+                rawData = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheet]);
+
+                if (rawData.length > 0) {
+                    document.getElementById('main-tabs').style.display = 'flex';
+                    renderTable(rawData);
+                    renderCharts(rawData);
+                    document.getElementById('upload-area').style.padding = '10px';
+                    document.getElementById('titulo').innerText = "Análisis: " + file.name;
+                }
+            } catch (err) {
+                alert("Error al procesar el Excel. Verifica el formato.");
+                console.error(err);
+            }
         };
-        reader.readAsArrayBuffer(e.target.files[0]);
+        reader.readAsArrayBuffer(file);
     });
 
     function renderTable(data) {
         let html = '<table><thead><tr>';
-        if(data.length > 0) {
-            Object.keys(data[0]).forEach(k => html += `<th>${k}</th>`);
-            html += '</tr></thead><tbody>';
-            data.forEach(row => {
-                html += '<tr>';
-                Object.values(row).forEach(v => html += `<td>${v || ''}</td>`);
-                html += '</tr>';
-            });
-        }
+        const headers = Object.keys(data[0]);
+        headers.forEach(h => html += `<th>${h}</th>`);
+        html += '</tr></thead><tbody>';
+        
+        data.forEach(row => {
+            html += '<tr>';
+            headers.forEach(h => html += `<td>${row[h] || ''}</td>`);
+            html += '</tr>';
+        });
         html += '</tbody></table>';
         document.getElementById('table-output').innerHTML = html;
     }
 
     function renderCharts(data) {
-        // Destruir charts previos si existen
-        Object.values(charts).forEach(c => c.destroy());
+        // Limpiar gráficas anteriores
+        activeCharts.forEach(c => c.destroy());
+        activeCharts = [];
 
-        const counts = (key) => data.reduce((acc, row) => {
-            let val = row[key] || 'No definido';
-            acc[val] = (acc[val] || 0) + 1;
-            return acc;
-        }, {});
+        const getCounts = (possibleKeys) => {
+            const key = Object.keys(data[0]).find(k => possibleKeys.some(p => k.toLowerCase().includes(p.toLowerCase())));
+            if(!key) return null;
+            return data.reduce((acc, row) => {
+                let val = row[key] || 'Sin Asignar';
+                acc[val] = (acc[val] || 0) + 1;
+                return acc;
+            }, {});
+        };
 
-        // Ajusta los nombres de las llaves abajo según las columnas exactas de tu Excel de Odoo
-        const tecData = counts('Persona asignada') || counts('Técnico');
-        const estData = counts('Etapa') || counts('Estado');
+        // 1. Gráfica de Técnicos
+        const tecStats = getCounts(['persona', 'técnico', 'asignado', 'user']);
+        if(tecStats) {
+            const ctx = document.getElementById('chart-tecnicos').getContext('2d');
+            activeCharts.push(new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(tecStats),
+                    datasets: [{ label: 'Tickets', data: Object.values(tecStats), backgroundColor: '#3498db' }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            }));
+        }
 
-        charts.tec = new Chart(document.getElementById('chart-tecnicos'), {
-            type: 'bar',
-            data: { labels: Object.keys(tecData), datasets: [{ label: 'Tickets por Técnico', data: Object.values(tecData), backgroundColor: '#3498db' }] },
-            options: { maintainAspectRatio: false }
-        });
-
-        charts.est = new Chart(document.getElementById('chart-estados'), {
-            type: 'doughnut',
-            data: { labels: Object.keys(estData), datasets: [{ data: Object.values(estData), backgroundColor: ['#2ecc71','#f1c40f','#e74c3c','#9b59b6'] }] },
-            options: { maintainAspectRatio: false, plugins: { title: { display: true, text: 'Estado de Tickets' } } }
-        });
+        // 2. Gráfica de Estados
+        const estStats = getCounts(['etapa', 'estado', 'status', 'stage']);
+        if(estStats) {
+            const ctx = document.getElementById('chart-estados').getContext('2d');
+            activeCharts.push(new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(estStats),
+                    datasets: [{ data: Object.values(estStats), backgroundColor: ['#2ecc71','#f1c40f','#e74c3c','#3498db','#9b59b6'] }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            }));
+        }
     }
 
+    // Buscador
     document.getElementById('search-input').addEventListener('input', function(e) {
         const term = e.target.value.toLowerCase();
         const filtered = rawData.filter(row => Object.values(row).some(v => String(v).toLowerCase().includes(term)));
